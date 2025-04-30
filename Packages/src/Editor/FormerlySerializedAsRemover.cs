@@ -69,7 +69,7 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 else
                 {
                     // If attributes remain, return them formatted, preserving the whitespace after the bracket and the comment.
-                    return $"`[{cleanedAttributes}]{whitespaceAfterBracket}{trailingComment}";
+                    return $"[{cleanedAttributes}]{whitespaceAfterBracket}{trailingComment}";
                 }
             });
 
