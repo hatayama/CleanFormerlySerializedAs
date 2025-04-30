@@ -1,3 +1,4 @@
+using io.github.hatayama.CleanFormerlySerializedAs;
 using NUnit.Framework;
 
 namespace io.github.hatayama
