@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace io.github.hatayama
+namespace io.github.hatayama.CleanFormerlySerializedAs
 {
     /// <summary>
     /// Handles the logic for removing FormerlySerializedAs attributes.

@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System.IO;
 
-namespace io.github.hatayama
+namespace io.github.hatayama.CleanFormerlySerializedAs
 {
     /// <summary>
     /// Provides menu items to trigger the removal of FormerlySerializedAs attributes.
