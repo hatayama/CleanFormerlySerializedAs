@@ -21,14 +21,17 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             // Regular expression to find the entire attribute block and any potential trailing end-of-line comments.
             // Group 1: The entire block including square brackets ([Attr, FSA, Attr2])
             // Group 2: The content inside the square brackets (Attr, FSA, Attr2)
-            // Group 3: Whitespace and end-of-line comment after the block ( // comment) (optional)
-            string pattern = @"(\[([^\]]*)\])(\s*//.*)?";
+            // Group 3: Whitespace after the closing bracket (includes newlines if any)
+            // Group 4: Whitespace and end-of-line comment after the block ( // comment) (optional)
+            string pattern = @"(\[([^\]]*)\])(\s*)(\s*//.*)?";
             var regex = new Regex(pattern);
 
             string processedResult = regex.Replace(content, match =>
             {
                 string attributesInside = match.Groups[2].Value; // e.g., Attr, FSA, Attr2
-                string trailingComment = match.Groups[3].Success ? match.Groups[3].Value : ""; // e.g.,  // comment
+                string whitespaceAfterBracket = match.Groups[3].Value; // Whitespace immediately after ]
+                string trailingCommentGroup = match.Groups[4].Value; // The captured comment part including its leading whitespace
+                string trailingComment = match.Groups[4].Success ? trailingCommentGroup : ""; // Use the captured group if it exists
 
                 // Count the number of FormerlySerializedAs attributes within the matched attributes.
                 int currentMatchRemovedCount = Regex.Matches(attributesInside, @"FormerlySerializedAs\([^)]*\)").Count;
@@ -54,22 +57,25 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 cleanedAttributes = cleanedAttributes.Trim(); // Remove leading/trailing whitespace.
                 cleanedAttributes = cleanedAttributes.TrimEnd(','); // Remove trailing unnecessary comma (e.g., [A, B,] -> [A, B]).
                 cleanedAttributes = cleanedAttributes.TrimStart(','); // Remove leading unnecessary comma (e.g., [, A, B] -> [A, B]).
-                cleanedAttributes = cleanedAttributes.Trim(); // Trim again.
+                cleanedAttributes = cleanedAttributes.Trim(); // Trim again after potential comma removal
 
                 if (string.IsNullOrWhiteSpace(cleanedAttributes))
                 {
-                    // If attributes become empty, remove the entire block (and comment).
-                    // Simply remove the block and comment.
-                    return "";
+                    // If all attributes were removed (only FSA existed),
+                    // remove the attribute block `[...]` and the whitespace immediately following it,
+                    // but keep the trailing comment.
+                    return trailingComment; // whitespaceAfterBracket is implicitly removed
                 }
-
-                // If attributes remain, return them formatted.
-                return $"[{cleanedAttributes}]{trailingComment}";
+                else
+                {
+                    // If attributes remain, return them formatted, preserving the whitespace after the bracket and the comment.
+                    return $"`[{cleanedAttributes}]{whitespaceAfterBracket}{trailingComment}";
+                }
             });
 
             // Final cleanup: Collapse multiple consecutive newlines into a single newline.
-            processedResult = Regex.Replace(processedResult, @"(\r?\n){2,}", "\n", RegexOptions.Multiline);
-
+            // This might remove intended blank lines, so commenting it out for now.
+            // processedResult = Regex.Replace(processedResult, @"(\r?\n){2,}", "\n", RegexOptions.Multiline);
 
             return (processedResult, totalRemovedCount);
         }

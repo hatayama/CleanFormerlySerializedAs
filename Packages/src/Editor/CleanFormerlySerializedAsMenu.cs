@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEditor;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace io.github.hatayama.CleanFormerlySerializedAs
 {
@@ -18,7 +20,11 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             if (guids.Length != 1) return false;
 
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            // Enable if a file or directory exists.
+            // Check if the path is inside the Assets folder before proceeding
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/"))
+            {
+                return false;
+            }
             return (File.Exists(path) && Path.GetExtension(path).ToLower() == ".cs") || Directory.Exists(path);
         }
 
@@ -26,124 +32,260 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
         private static void ProcessSelectedScript()
         {
             bool userConfirmed = EditorUtility.DisplayDialog(
-                "Confirmation", // Dialog title
-                "This will remove FormerlySerializedAs attributes.\nIt's recommended to back up your project (e.g., using git) just in case.",
-                "OK", 
+                "Confirmation",
+                "It's recommended to back up your project (e.g., using git) just in case.",
+                "OK",
                 "Cancel"
             );
 
-            // If cancel is pressed, do nothing and exit.
             if (!userConfirmed)
             {
                 return;
             }
 
-            // --- Original process below ---
             string[] guids = Selection.assetGUIDs;
-            if (guids.Length != 1) return; // Already checked in ValidateMenuItem, but just in case.
-
+            // No need to check guids.Length again, ValidateMenuItem already does.
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-            int totalRemovedCount = 0;
-            int processedFileCount = 0;
 
-            if (File.Exists(path) && Path.GetExtension(path).ToLower() == ".cs")
+            // GetTargetScriptPaths already filters for Assets/ folder
+            List<string> targetScriptPaths = GetTargetScriptPaths(path);
+
+            if (targetScriptPaths.Count == 0)
             {
-                totalRemovedCount = ProcessScript(path);
-                processedFileCount = 1;
+                 // Provide feedback if no scripts are found in the selection
+                 string selectionType = Directory.Exists(path) ? "directory" : "file";
+                 EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
+                     $"No C# scripts found in the selected {selectionType} or its subdirectories within the Assets folder.",
+                     "OK");
+                 return;
             }
-            else if (Directory.Exists(path))
+
+            // 1. Find scripts containing the attribute without modifying them
+            // Ensure FormerlySerializedAsRemover is available in the project scope
+            FormerlySerializedAsRemover checker = new FormerlySerializedAsRemover();
+            List<string> scriptsWithAttribute = FindScriptsWithAttribute(targetScriptPaths, checker);
+
+            if (scriptsWithAttribute.Count == 0)
             {
-                // If a directory is selected, recursively search for .cs files within it.
-                string[] csFiles = Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories);
-                foreach (string csFile in csFiles)
-                {
-                    // Execute the process for each file and add the number of deletions.
-                    totalRemovedCount += ProcessScript(csFile);
-                    processedFileCount++;
-                }
-            }
-            else
-            {
-                // Basically, it shouldn't come here.
-                Debug.LogError("Selected asset is not a C# script file or directory.");
+                EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
+                    $"Processed {targetScriptPaths.Count} script(s).\nNo FormerlySerializedAs attributes found.",
+                    "OK");
                 return;
             }
 
-            // Perform post-processing and display results only if some files have been processed.
-            if (processedFileCount > 0)
-            {
-                 // Refresh AssetDatabase after file changes.
-                 AssetDatabase.Refresh();
-                 // Update related Prefabs.
-                 UpdateRelatedPrefabs();
+            // 2. Mark related Prefabs as dirty
+            bool prefabsUpdated = UpdateRelatedPrefabs(scriptsWithAttribute);
 
-                 // Display the result dialog.
-                 if (totalRemovedCount > 0)
-                 {
-                     EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
-                         $"Processed {processedFileCount} script(s). \nSuccessfully removed {totalRemovedCount} FormerlySerializedAs attributes.",
-                         "OK");
-                 }
-                 else // If attributes were not found.
-                 {
-                     EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
-                         $"Processed {processedFileCount} script(s). \nNo FormerlySerializedAs attributes found.",
-                         "OK");
-                 }
-            }
-            else if (Directory.Exists(path)) // If no cs files were found when a directory was selected.
+            // 3. Remove the attributes from the identified scripts
+            int totalRemovedCount = 0;
+            // Reuse the checker instance, assuming it can also perform removal
+            foreach (string scriptPath in scriptsWithAttribute)
             {
-                // Display a dialog indicating that no C# scripts were found.
-                EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
-                    "No C# scripts found in the selected directory or its subdirectories.",
-                    "OK");
+                totalRemovedCount += RemoveAttributesFromFile(scriptPath, checker);
             }
+
+            // Post-processing: Refresh AssetDatabase if attributes were removed
+            if (totalRemovedCount > 0)
+            {
+                 AssetDatabase.Refresh(); // Refresh only if changes were made
+                 Debug.Log("AssetDatabase refreshed after removing FormerlySerializedAs attributes.");
+            }
+
+
+            // Display results
+            string message = $"Processed {targetScriptPaths.Count} script(s).\n";
+            message += $"Found {scriptsWithAttribute.Count} script(s) with attributes.\n";
+            if (totalRemovedCount > 0)
+            {
+                 message += $"Successfully removed {totalRemovedCount} FormerlySerializedAs attributes.\n";
+            } else {
+                 message += "No FormerlySerializedAs attributes were removed (check remover logic or file permissions).\n";
+            }
+
+            if (prefabsUpdated)
+            {
+                message += "Related Prefabs have been marked dirty and saved.";
+            } else {
+                message += "No related Prefabs needed updating or no Prefabs were found.";
+            }
+
+            EditorUtility.DisplayDialog("Clean FormerlySerializedAs", message, "OK");
         }
 
         /// <summary>
-        /// Processes the specified C# script file and returns the number of FormerlySerializedAs attributes removed.
+        /// Gets a list of C# script paths from the selected asset path, filtering for Assets folder.
         /// </summary>
-        /// <param name="scriptPath">The path of the script file to process.</param>
-        /// <returns>The number of FormerlySerializedAs attributes removed.</returns>
-        private static int ProcessScript(string scriptPath)
+        private static List<string> GetTargetScriptPaths(string path)
         {
-            var cleaner = new FormerlySerializedAsRemover(); // Uses the other class
-            string content = File.ReadAllText(scriptPath);
-
-            var (processedContent, removedCount) = cleaner.RemoveFormerlySerializedAs(content);
-
-            if (removedCount == 0)
+            List<string> scriptPaths = new List<string>();
+            if (File.Exists(path) && Path.GetExtension(path).ToLower() == ".cs")
             {
-                // Even if attributes were not found, the file was processed, so return 0.
-                return 0;
+                // Ensure the single selected file is also within Assets
+                 if (path.StartsWith("Assets/"))
+                 {
+                    scriptPaths.Add(path);
+                 }
             }
-
-            // Write the file only if there were changes.
-            System.IO.File.WriteAllText(scriptPath, processedContent);
-
-            // Return the number of removed attributes.
-            return removedCount;
+            else if (Directory.Exists(path))
+            {
+                 // GetFiles already searches recursively. Filter results for Assets/.
+                 scriptPaths.AddRange(Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories)
+                                             .Where(p => p.StartsWith("Assets/")));
+            }
+            return scriptPaths;
         }
 
         /// <summary>
-        /// Updates Prefabs that might be related to scripts where FormerlySerializedAs attributes were removed.
+        /// Finds scripts containing the FormerlySerializedAs attribute. Does not modify files.
         /// </summary>
-        private static void UpdateRelatedPrefabs()
+        private static List<string> FindScriptsWithAttribute(List<string> scriptPaths, FormerlySerializedAsRemover checker)
         {
-            string[] allPrefabs = AssetDatabase.FindAssets("t:Prefab");
-
-            foreach (string prefabGuid in allPrefabs)
+            List<string> foundScripts = new List<string>();
+            foreach (string scriptPath in scriptPaths)
             {
-                string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuid);
-                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-
-                if (prefab != null)
+                try
                 {
-                    EditorUtility.SetDirty(prefab);
+                    string content = File.ReadAllText(scriptPath);
+                    // Use the existing RemoveFormerlySerializedAs method to check the count.
+                    // We don't need the processed content here, just the count.
+                    (_, int potentialRemovedCount) = checker.RemoveFormerlySerializedAs(content);
+                    if (potentialRemovedCount > 0)
+                    {
+                        foundScripts.Add(scriptPath);
+                    }
+                }
+                catch (IOException ex)
+                {
+                    Debug.LogError($"Error reading script file {scriptPath}: {ex.Message}");
+                    // Optionally continue to the next file or rethrow/handle differently
+                }
+                 catch (System.Exception ex) // Catch other potential exceptions during check
+                 {
+                    Debug.LogError($"Unexpected error checking script {scriptPath}: {ex.Message}");
+                 }
+            }
+            return foundScripts;
+        }
+
+
+        /// <summary>
+        /// Updates Prefabs related to the scripts containing FormerlySerializedAs attributes.
+        /// Returns true if any Prefab was marked dirty and saved.
+        /// </summary>
+        private static bool UpdateRelatedPrefabs(List<string> scriptsWithAttributePaths)
+        {
+            if (scriptsWithAttributePaths == null || scriptsWithAttributePaths.Count == 0)
+            {
+                return false; // No scripts to check against
+            }
+
+            // Use HashSet for efficient lookups
+            HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/"))); // Normalize paths
+
+            string[] allPrefabGuids = AssetDatabase.FindAssets("t:Prefab");
+            bool prefabsModified = false;
+            int updatedPrefabCount = 0;
+            List<Object> dirtyPrefabs = new List<Object>(); // Collect prefabs to mark dirty
+
+            Debug.Log($"Checking {allPrefabGuids.Length} prefabs for components using {scriptsWithAttributePaths.Count} modified scripts...");
+
+            foreach (string prefabGuid in allPrefabGuids)
+            {
+                string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuid)?.Replace("\\", "/"); // Normalize path
+                // Ensure the prefab is within the Assets folder
+                if (string.IsNullOrEmpty(prefabPath) || !prefabPath.StartsWith("Assets/"))
+                {
+                    continue;
+                }
+
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                if (prefab == null) {
+                     Debug.LogWarning($"Could not load prefab at path: {prefabPath}");
+                    continue; // Skip if prefab cannot be loaded
+                }
+
+
+                // Get all components, including those on inactive GameObjects within the prefab
+                Component[] components = prefab.GetComponentsInChildren<Component>(true);
+                bool shouldMarkDirty = false;
+
+                foreach (Component component in components)
+                {
+                    if (component == null) continue; // Skip potentially broken components
+
+                    // Check if the component is a MonoBehaviour
+                    MonoBehaviour behaviour = component as MonoBehaviour;
+                    if (behaviour == null) continue;
+
+                    MonoScript monoScript = MonoScript.FromMonoBehaviour(behaviour);
+                    if (monoScript == null) continue; // Skip if script asset is missing
+
+                    string scriptAssetPath = AssetDatabase.GetAssetPath(monoScript)?.Replace("\\", "/"); // Normalize path
+
+                    // Check if the script path is in our set of modified scripts
+                    if (!string.IsNullOrEmpty(scriptAssetPath) && scriptPathSet.Contains(scriptAssetPath))
+                    {
+                        shouldMarkDirty = true;
+                        break; // Found a relevant component, no need to check others in this prefab
+                    }
+                }
+
+                if (shouldMarkDirty)
+                {
+                    dirtyPrefabs.Add(prefab); // Add to list for batch marking
+                     prefabsModified = true;
+                     updatedPrefabCount++;
                 }
             }
 
-            AssetDatabase.SaveAssets();
+            // Mark all collected prefabs as dirty outside the loop
+             if (dirtyPrefabs.Count > 0)
+             {
+                // Marking prefabs dirty should ideally happen before saving assets.
+                foreach(Object obj in dirtyPrefabs) {
+                    EditorUtility.SetDirty(obj);
+                }
+                AssetDatabase.SaveAssets(); // Save all dirty assets
+                Debug.Log($"Marked {updatedPrefabCount} Prefabs dirty and saved assets.");
+             } else {
+                 Debug.Log("No prefabs needed updating.");
+             }
+
+            return prefabsModified; // Return true if any prefabs were dirtied and saved
+        }
+
+        /// <summary>
+        /// Removes FormerlySerializedAs attributes from the specified script file using the remover.
+        /// </summary>
+        /// <returns>The number of attributes removed.</returns>
+        private static int RemoveAttributesFromFile(string scriptPath, FormerlySerializedAsRemover remover)
+        {
+            try
+            {
+                string originalContent = File.ReadAllText(scriptPath);
+                // Call the actual removal method
+                (string processedContent, int removedCount) = remover.RemoveFormerlySerializedAs(originalContent);
+
+                // Only write back if changes were actually made
+                if (removedCount > 0 && originalContent != processedContent)
+                {
+                    File.WriteAllText(scriptPath, processedContent);
+                    Debug.Log($"Removed {removedCount} attributes from {Path.GetFileName(scriptPath)}");
+                    return removedCount;
+                } else if (removedCount > 0) {
+                     Debug.LogWarning($"Remover reported {removedCount} removals in {Path.GetFileName(scriptPath)}, but content was unchanged. Check remover logic.");
+                     return 0; // Report 0 if no change occurred despite count > 0
+                }
+            }
+            catch (IOException ex)
+            {
+                Debug.LogError($"Error reading/writing script file {scriptPath}: {ex.Message}");
+            }
+             catch (System.Exception ex) // Catch other potential exceptions during removal
+             {
+                Debug.LogError($"Unexpected error removing attributes from script {scriptPath}: {ex.Message}");
+             }
+            return 0; // Return 0 if no attributes were removed or an error occurred
         }
     }
 } 
