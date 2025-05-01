@@ -21,7 +21,7 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
 
             string path = AssetDatabase.GUIDToAssetPath(guids[0]);
             // Check if the path is inside the Assets folder before proceeding
-            if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/"))
+            if (string.IsNullOrEmpty(path))
             {
                 return false;
             }
@@ -74,7 +74,7 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             }
 
             // 2. Mark related Prefabs as dirty
-            bool prefabsUpdated = UpdateRelatedPrefabs(scriptsWithAttribute);
+            int updatedPrefabCount = UpdateRelatedPrefabs(scriptsWithAttribute);
 
             // 3. Remove the attributes from the identified scripts
             int totalRemovedCount = 0;
@@ -102,11 +102,13 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                  message += "No FormerlySerializedAs attributes were removed (check remover logic or file permissions).\n";
             }
 
-            if (prefabsUpdated)
+            if (updatedPrefabCount > 0)
             {
-                message += "Related Prefabs have been marked dirty and saved.";
-            } else {
-                message += "No related Prefabs needed updating or no Prefabs were found.";
+                message += $"Updated and saved {updatedPrefabCount} related Prefab(s).";
+            } else if (updatedPrefabCount == 0 && scriptsWithAttribute.Count > 0) {
+                message += "No related Prefabs needed updating or no related Prefabs were found.";
+            } else if (scriptsWithAttribute.Count == 0) {
+                message += "No related Prefabs needed updating as no scripts with attributes were found.";
             }
 
             EditorUtility.DisplayDialog("Clean FormerlySerializedAs", message, "OK");
@@ -170,88 +172,123 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
 
         /// <summary>
         /// Updates Prefabs related to the scripts containing FormerlySerializedAs attributes.
-        /// Returns true if any Prefab was marked dirty and saved.
+        /// Returns the number of Prefabs that were marked dirty and saved.
         /// </summary>
-        private static bool UpdateRelatedPrefabs(List<string> scriptsWithAttributePaths)
+        private static int UpdateRelatedPrefabs(List<string> scriptsWithAttributePaths)
         {
             if (scriptsWithAttributePaths == null || scriptsWithAttributePaths.Count == 0)
             {
-                return false; // No scripts to check against
+                return 0; // No scripts to check against
             }
 
             // Use HashSet for efficient lookups
-            HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/"))); // Normalize paths
+            HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\\\", "/"))); // Normalize paths
 
             string[] allPrefabGuids = AssetDatabase.FindAssets("t:Prefab");
-            bool prefabsModified = false;
+            int totalPrefabs = allPrefabGuids.Length; // ★ 全プレハブ数を取得
+            int processedCount = 0; // ★ 処理済み数をカウント
             int updatedPrefabCount = 0;
             List<Object> dirtyPrefabs = new List<Object>(); // Collect prefabs to mark dirty
 
-            Debug.Log($"Checking {allPrefabGuids.Length} prefabs for components using {scriptsWithAttributePaths.Count} modified scripts...");
+            Debug.Log($"Checking {totalPrefabs} prefabs for components using {scriptsWithAttributePaths.Count} modified scripts...");
 
-            foreach (string prefabGuid in allPrefabGuids)
+            try // ★ プログレスバーを確実に閉じるために try-finally を使うんや
             {
-                string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuid)?.Replace("\\", "/"); // Normalize path
-                // Ensure the prefab is within the Assets folder
-                if (string.IsNullOrEmpty(prefabPath) || !prefabPath.StartsWith("Assets/"))
+                // ★ プログレスバー表示開始
+                // 最初はキャンセル不可のバーを表示（0%時点ですぐキャンセルされるのを防ぐ意図もある）
+                EditorUtility.DisplayProgressBar("Updating Prefabs", "Starting scan...", 0f);
+
+                foreach (string prefabGuid in allPrefabGuids)
                 {
-                    continue;
-                }
-
-                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                if (prefab == null) {
-                     Debug.LogWarning($"Could not load prefab at path: {prefabPath}");
-                    continue; // Skip if prefab cannot be loaded
-                }
-
-
-                // Get all components, including those on inactive GameObjects within the prefab
-                Component[] components = prefab.GetComponentsInChildren<Component>(true);
-                bool shouldMarkDirty = false;
-
-                foreach (Component component in components)
-                {
-                    if (component == null) continue; // Skip potentially broken components
-
-                    // Check if the component is a MonoBehaviour
-                    MonoBehaviour behaviour = component as MonoBehaviour;
-                    if (behaviour == null) continue;
-
-                    MonoScript monoScript = MonoScript.FromMonoBehaviour(behaviour);
-                    if (monoScript == null) continue; // Skip if script asset is missing
-
-                    string scriptAssetPath = AssetDatabase.GetAssetPath(monoScript)?.Replace("\\", "/"); // Normalize path
-
-                    // Check if the script path is in our set of modified scripts
-                    if (!string.IsNullOrEmpty(scriptAssetPath) && scriptPathSet.Contains(scriptAssetPath))
+                    processedCount++; // ★ 処理済み数をインクリメント
+                    // ★ プログレスバー更新 (タイトル、情報、進捗率) - ここからキャンセル可能にする
+                    string info = $"Scanning prefab {processedCount}/{totalPrefabs}";
+                    float progress = (float)processedCount / totalPrefabs;
+                    // DisplayCancelableProgressBar はループ内で呼ぶ
+                    if (EditorUtility.DisplayCancelableProgressBar("Updating Prefabs", info, progress))
                     {
-                        shouldMarkDirty = true;
-                        break; // Found a relevant component, no need to check others in this prefab
+                         // ★ キャンセルボタンが押された場合の処理
+                         Debug.LogWarning("Prefab update process cancelled by user.");
+                         // finally ブロックで ClearProgressBar が呼ばれるので、ここでは return 0 するだけでよい
+                         return 0; // ★ キャンセルされたら 0 を返す
                     }
-                }
 
-                if (shouldMarkDirty)
-                {
-                    dirtyPrefabs.Add(prefab); // Add to list for batch marking
-                     prefabsModified = true;
-                     updatedPrefabCount++;
-                }
+
+                    string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuid)?.Replace("\\\\", "/"); // Normalize path
+                    // Ensure the prefab is within the Assets folder
+                    if (string.IsNullOrEmpty(prefabPath) || !prefabPath.StartsWith("Assets/"))
+                    {
+                        continue;
+                    }
+
+                    GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                    if (prefab == null) {
+                         Debug.LogWarning($"Could not load prefab at path: {prefabPath}");
+                        continue; // Skip if prefab cannot be loaded
+                    }
+
+
+                    // Get all components, including those on inactive GameObjects within the prefab
+                    Component[] components = prefab.GetComponentsInChildren<Component>(true);
+                    bool shouldMarkDirty = false;
+
+                    foreach (Component component in components)
+                    {
+                        if (component == null) continue; // Skip potentially broken components
+
+                        // Check if the component is a MonoBehaviour
+                        MonoBehaviour behaviour = component as MonoBehaviour;
+                        if (behaviour == null) continue;
+
+                        MonoScript monoScript = MonoScript.FromMonoBehaviour(behaviour);
+                        if (monoScript == null) continue; // Skip if script asset is missing
+
+                        string scriptAssetPath = AssetDatabase.GetAssetPath(monoScript)?.Replace("\\\\", "/"); // Normalize path
+
+                        // Check if the script path is in our set of modified scripts
+                        if (!string.IsNullOrEmpty(scriptAssetPath) && scriptPathSet.Contains(scriptAssetPath))
+                        {
+                            shouldMarkDirty = true;
+                            break; // Found a relevant component, no need to check others in this prefab
+                        }
+                    }
+
+                    if (shouldMarkDirty)
+                    {
+                        dirtyPrefabs.Add(prefab); // Add to list for batch marking
+                         updatedPrefabCount++;
+                    }
+                } // ★ ループ終了
             }
+            finally
+            {
+                 // ★ プログレスバーを閉じる
+                 EditorUtility.ClearProgressBar();
+            }
+
 
             // Mark all collected prefabs as dirty outside the loop
              if (dirtyPrefabs.Count > 0)
              {
-                // Marking prefabs dirty should ideally happen before saving assets.
-                foreach(Object obj in dirtyPrefabs) {
-                    EditorUtility.SetDirty(obj);
+                AssetDatabase.StartAssetEditing(); // ★ 編集開始や
+                try // finally で確実に StopAssetEditing を呼ぶためやで
+                {
+                    // Marking prefabs dirty should ideally happen before saving assets.
+                    foreach(Object obj in dirtyPrefabs) {
+                        EditorUtility.SetDirty(obj);
+                    }
+                    AssetDatabase.SaveAssets(); // Save all dirty assets
+                    Debug.Log($"Marked {updatedPrefabCount} Prefabs dirty and saved assets.");
                 }
-                AssetDatabase.SaveAssets(); // Save all dirty assets
-                Debug.Log($"Marked {updatedPrefabCount} Prefabs dirty and saved assets.");
+                finally
+                {
+                    AssetDatabase.StopAssetEditing(); // ★ 編集終了や
+                }
              } else {
                  Debug.Log("No prefabs needed updating.");
              }
 
-            return prefabsModified; // Return true if any prefabs were dirtied and saved
+            return updatedPrefabCount; // ★ 更新したプレハブ数を返す
         }
 
         /// <summary>
