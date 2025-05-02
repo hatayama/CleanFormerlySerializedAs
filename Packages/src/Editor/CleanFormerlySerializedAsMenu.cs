@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
@@ -73,10 +75,13 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 return;
             }
 
-            // 2. Mark related Prefabs as dirty
+            // 2a. 関連するプレハブアセット (Regularのみ) を更新
             int updatedPrefabCount = UpdateRelatedPrefabs(scriptsWithAttribute);
 
-            // 3. Remove the attributes from the identified scripts
+            // ★★★ 2b. 開いているシーン内の非プレハブGameObjectを更新 ★★★
+            int updatedSceneCount = UpdateSceneObjects(scriptsWithAttribute);
+
+            // 3. 属性をスクリプトから削除
             int totalRemovedCount = 0;
             // Reuse the checker instance, assuming it can also perform removal
             foreach (string scriptPath in scriptsWithAttribute)
@@ -92,24 +97,31 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             }
 
 
-            // Display results
+            // ★★★ 5. 結果表示 (シーン情報も追加) ★★★
             string message = $"Processed {targetScriptPaths.Count} script(s).\n";
             message += $"Found {scriptsWithAttribute.Count} script(s) with attributes.\n";
             if (totalRemovedCount > 0)
             {
                  message += $"Successfully removed {totalRemovedCount} FormerlySerializedAs attributes.\n";
             } else {
-                 message += "No FormerlySerializedAs attributes were removed (check remover logic or file permissions).\n";
+                 message += "No FormerlySerializedAs attributes were removed.\n"; // メッセージ調整
             }
 
             if (updatedPrefabCount > 0)
             {
-                message += $"Updated and saved {updatedPrefabCount} related Prefab(s).";
-            } else if (updatedPrefabCount == 0 && scriptsWithAttribute.Count > 0) {
-                message += "No related Prefabs needed updating or no related Prefabs were found.";
-            } else if (scriptsWithAttribute.Count == 0) {
-                message += "No related Prefabs needed updating as no scripts with attributes were found.";
+                message += $"Updated and saved {updatedPrefabCount} related Prefab asset(s).\n";
+            } else if (scriptsWithAttribute.Count > 0) { // 属性持ちスクリプトがあった場合のみメッセージ表示
+                message += "No related Prefab assets needed updating.\n";
             }
+
+            // ★ シーン更新結果のメッセージを追加 ★
+            if (updatedSceneCount > 0)
+            {
+                message += $"Marked {updatedSceneCount} open scene(s) as dirty.\nPlease save the modified scene(s).";
+            } else if (scriptsWithAttribute.Count > 0) { // 属性持ちスクリプトがあった場合のみメッセージ表示
+                message += "No open scenes needed updating.";
+            }
+
 
             EditorUtility.DisplayDialog("Clean FormerlySerializedAs", message, "OK");
         }
@@ -224,11 +236,44 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                     GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
                     if (prefab == null) {
                          Debug.LogWarning($"Could not load prefab at path: {prefabPath}");
-                        continue; // Skip if prefab cannot be loaded
+                        continue;
                     }
 
+                    // ★★★ プレハブタイプが Regular かどうかをチェック ★★★
+                    PrefabAssetType prefabType = PrefabUtility.GetPrefabAssetType(prefab);
+                    if (prefabType != PrefabAssetType.Regular)
+                    {
+                        // Regular 以外（Variant, Model, Missing など）はスキップや
+                        Debug.Log($"Skipping non-regular prefab ({prefabType}): {prefabPath}");
+                        continue;
+                    }
 
-                    // Get all components, including those on inactive GameObjects within the prefab
+                    // ★★★ Regular Prefab でも、内部に Nested Prefab を含んでいないかチェック ★★★
+                    bool containsNestedInstance = false;
+                    Transform[] transforms = prefab.GetComponentsInChildren<Transform>(true);
+                    foreach (Transform t in transforms)
+                    {
+                        // ルート自身はチェック対象外
+                        if (t == prefab.transform) continue;
+
+                        // ルート以外で、プレハブインスタンスの一部である GameObject があるか？
+                        if (PrefabUtility.IsPartOfPrefabInstance(t.gameObject))
+                        {
+                            containsNestedInstance = true;
+                            Debug.Log($"Skipping Regular prefab because it contains a nested prefab instance: {prefabPath}");
+                            break; // 一つ見つかれば十分
+                        }
+                    }
+
+                    // ★★★ 内部に Nested Prefab を含んでいたらスキップ ★★★
+                    if (containsNestedInstance)
+                    {
+                        continue;
+                    }
+                    // ★★★ チェック終了 ★★★
+
+
+                    // ★ ここから下のコンポーネントチェックは、Regular かつ Nested を含まないプレハブのみが対象になる ★
                     Component[] components = prefab.GetComponentsInChildren<Component>(true);
                     bool shouldMarkDirty = false;
 
@@ -289,6 +334,123 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
              }
 
             return updatedPrefabCount; // ★ 更新したプレハブ数を返す
+        }
+
+        /// <summary>
+        /// Updates GameObjects in open scenes that use scripts with FormerlySerializedAs attributes,
+        /// skipping any objects that are part of a prefab instance.
+        /// Returns the number of scenes marked dirty.
+        /// </summary>
+        private static int UpdateSceneObjects(List<string> scriptsWithAttributePaths)
+        {
+            if (scriptsWithAttributePaths == null || scriptsWithAttributePaths.Count == 0)
+            {
+                return 0;
+            }
+
+            // 属性持ちスクリプトのパスを HashSet にしておくで
+            HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/")));
+            int dirtySceneCount = 0;
+            int totalScenes = EditorSceneManager.sceneCount; // ★ 総シーン数を取得
+
+            Debug.Log($"Checking GameObjects in {totalScenes} open scenes using {scriptsWithAttributePaths.Count} modified scripts...");
+
+            // ★ プログレスバー表示のために try-finally を使うで
+            try
+            {
+                // ★ プログレスバー初期表示 (キャンセル不可)
+                EditorUtility.DisplayProgressBar("Updating Scene Objects", "Starting scene scan...", 0f);
+
+                // 開いている全シーンをループ
+                for (int i = 0; i < totalScenes; i++) // ★ ループ条件を totalScenes に変更
+                {
+                    Scene scene = EditorSceneManager.GetSceneAt(i);
+
+                    // ★ プログレスバー更新 (ここからキャンセル可能) ★
+                    string sceneName = string.IsNullOrEmpty(scene.name) ? $"Untitled Scene {i}" : scene.name;
+                    string info = $"Scanning scene {i + 1}/{totalScenes}: {sceneName}";
+                    float progress = (float)(i + 1) / totalScenes;
+                    if (EditorUtility.DisplayCancelableProgressBar("Updating Scene Objects", info, progress))
+                    {
+                        // ★ キャンセル処理 ★
+                        Debug.LogWarning("Scene object update process cancelled by user.");
+                        return 0; // キャンセルされたら 0 を返す
+                    }
+
+                    // シーンがロードされてて有効か確認 (isDirtyチェックは不要)
+                    if (!scene.IsValid() || !scene.isLoaded /*|| scene.isDirty*/)
+                    {
+                        continue;
+                    }
+
+                    bool sceneNeedsMarkingDirty = false; // このシーンをダーティにするかのフラグ
+
+                    // シーンのルートGameObjectを取得
+                    GameObject[] rootObjects = scene.GetRootGameObjects();
+                    foreach (GameObject rootObject in rootObjects)
+                    {
+                        // ルートとその子孫の MonoBehaviour を全取得
+                        MonoBehaviour[] behaviours = rootObject.GetComponentsInChildren<MonoBehaviour>(true);
+                        foreach (MonoBehaviour behaviour in behaviours)
+                        {
+                            if (behaviour == null) continue;
+
+                            // ★★★ このGameObjectがプレハブの一部「ではない」ことを確認 ★★★
+                            if (PrefabUtility.IsPartOfAnyPrefab(behaviour.gameObject))
+                            {
+                                continue; // プレハブの一部ならスキップや
+                            }
+
+                            // MonoBehaviour から MonoScript を取得
+                            MonoScript monoScript = MonoScript.FromMonoBehaviour(behaviour);
+                            if (monoScript == null) continue;
+
+                            // スクリプトパスを取得して正規化
+                            string scriptAssetPath = AssetDatabase.GetAssetPath(monoScript)?.Replace("\\", "/");
+
+                            // 属性持ちスクリプトリストに含まれてるかチェック
+                            if (!string.IsNullOrEmpty(scriptAssetPath) && scriptPathSet.Contains(scriptAssetPath))
+                            {
+                                // 見つかった！このシーンはダーティにする必要がある
+                                sceneNeedsMarkingDirty = true;
+                                Debug.Log($"Found component using modified script '{Path.GetFileName(scriptAssetPath)}' on GameObject '{behaviour.gameObject.name}' in scene '{scene.name}'. Marking scene dirty.");
+                                break; // この GameObject の他のコンポーネントや子孫は見なくてええ
+                            }
+                        }
+
+                        // このルートオブジェクト以下でダーティフラグが立ったら、シーン全体の探索も終了
+                        if (sceneNeedsMarkingDirty)
+                        {
+                            break;
+                        }
+                    }
+
+                    // このシーンをダーティにする必要があればマークする
+                    if (sceneNeedsMarkingDirty)
+                    {
+                        // MarkSceneDirty はシーンがすでにダーティでも問題ないはずや
+                        EditorSceneManager.MarkSceneDirty(scene);
+                        dirtySceneCount++;
+                    }
+                } // ★ シーンループ終了
+            } // ★ tryブロック終了
+            finally
+            {
+                // ★ プログレスバーを確実に閉じる ★
+                EditorUtility.ClearProgressBar();
+            }
+
+
+            if (dirtySceneCount > 0)
+            {
+                Debug.Log($"Marked {dirtySceneCount} scene(s) dirty.");
+            }
+            else
+            {
+                Debug.Log("No GameObjects in open scenes found using the modified scripts (excluding prefab instances).");
+            }
+
+            return dirtySceneCount;
         }
 
         /// <summary>
