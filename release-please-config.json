@@ -1,0 +1,9 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "io.github.hatayama.cleanformerlyserializedas",
+      "package-path": "Packages/src"
+    }
+  }
+}

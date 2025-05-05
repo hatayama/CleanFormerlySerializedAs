@@ -3,16 +3,73 @@ name: release-please
 on:
   push:
     branches:
-      - main
+      - main        # ← デフォブランチに合わせて
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0      # タグ取得に必須
+
+      # ── デバッグ：リポ構造を出力 ─────────────────────────
+      - name: 🕵️ Show file tree
+        run: |
+          echo "PWD: $(pwd)"
+          echo "===== ls -R ====="
+          ls -R
+
+      # ── package.json が本当にあるか簡易チェック ─────────
+      - name: 🧪 Sanity check
+        run: |
+          test -f Packages/src/package.json && echo "✅ package.json OK"
+
+      # package.jsonをルートにコピーするステップ（絶対パス使用）
+      - name: 📋 Copy package.json to root
+        run: |
+          cp $GITHUB_WORKSPACE/Packages/src/package.json $GITHUB_WORKSPACE/
+          cat package.json  # 内容確認
+          echo "✅ package.json copied to root"
+
+      # ファイルの存在確認とデバッグ情報
+      - name: 🔍 Verify package.json exists in root
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -la
+          if [ -f "package.json" ]; then
+            echo "✅ package.json exists in root directory"
+            echo "Content of package.json:"
+            cat package.json | head -10
+          else
+            echo "❌ package.json NOT found in root directory"
+            find . -name "package.json" -type f
+            exit 1
+          fi
+
+      # releaseコンフィグファイルの作成（念のため）
+      - name: 📝 Create release-please config
+        run: |
+          echo '{
+            "packages": {
+              ".": {
+                "release-type": "node"
+              }
+            }
+          }' > release-please-config.json
+          echo "✅ Created release-please-config.json"
+          cat release-please-config.json
+
+      # ── release‑please 本番 ───────────────────────────
+      - name: 🚀 Run release‑please
+        uses: googleapis/release-please-action@v3  # v3を試してみる
         with:
           release-type: node
-          package-name: clean-formerly-serialized-as
-          path: Packages/CleanFormerlySerializedAs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          package-name: "io.github.hatayama.cleanformerlyserializedas"
+          repo-name: hatayama/CleanFormerlySerializedAs
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
