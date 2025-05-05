@@ -6,7 +6,6 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System;
-using UnityEditor.Compilation; // ★ Type を使うために追加
 
 namespace io.github.hatayama.CleanFormerlySerializedAs
 {
@@ -29,14 +28,8 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             {
                 return false;
             }
-            return (File.Exists(path) && Path.GetExtension(path).ToLower() == ".cs") || Directory.Exists(path);
-        }
 
-        [MenuItem("Tools/Hoge", false, 1000)]
-        private static void Hoge()
-        {
-            // 強制的にコンパイルを要求
-            CompilationPipeline.RequestScriptCompilation();
+            return (File.Exists(path) && Path.GetExtension(path).ToLower() == ".cs") || Directory.Exists(path);
         }
 
         [MenuItem(MenuItemPath, false, 1000)]
@@ -65,12 +58,12 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
 
             if (targetScriptPaths.Count == 0)
             {
-                 // Provide feedback if no scripts are found in the selection
-                 string selectionType = Directory.Exists(path) ? "directory" : "file";
-                 EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
-                     $"No C# scripts found in the selected {selectionType} or its subdirectories within the Assets folder.",
-                     "OK");
-                 return;
+                // Provide feedback if no scripts are found in the selection
+                string selectionType = Directory.Exists(path) ? "directory" : "file";
+                EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
+                    $"No C# scripts found in the selected {selectionType} or its subdirectories within the Assets folder.",
+                    "OK");
+                return;
             }
 
             // 1a. 属性を含むスクリプトの「パス」を探す
@@ -96,25 +89,25 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                     if (scriptType != null && typeof(MonoBehaviour).IsAssignableFrom(scriptType)) // MonoBehaviour 派生かどうかも一応チェック
                     {
                         baseTypesWithAttribute.Add(scriptType);
-                         Debug.Log($"[Type Check] Found base type with attribute: {scriptType.FullName}");
+                        Debug.Log($"[Type Check] Found base type with attribute: {scriptType.FullName}");
                     }
                     else if (scriptType == null)
                     {
-                         Debug.LogWarning($"Could not get class type from MonoScript at path: {scriptPath}");
+                        Debug.LogWarning($"Could not get class type from MonoScript at path: {scriptPath}");
                     }
                 }
                 else
                 {
-                     Debug.LogWarning($"Could not load MonoScript at path: {scriptPath}");
+                    Debug.LogWarning($"Could not load MonoScript at path: {scriptPath}");
                 }
             }
 
             if (baseTypesWithAttribute.Count == 0)
             {
-                 EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
-                     $"Processed {scriptsWithAttributePaths.Count} script(s) with attributes, but failed to get their class types.",
-                     "OK");
-                 return;
+                EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
+                    $"Processed {scriptsWithAttributePaths.Count} script(s) with attributes, but failed to get their class types.",
+                    "OK");
+                return;
             }
             // ★★★ Type セット作成ここまで ★★★
 
@@ -136,8 +129,8 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             // Post-processing: Refresh AssetDatabase if attributes were removed
             if (totalRemovedCount > 0)
             {
-                 AssetDatabase.Refresh(); // Refresh only if changes were made
-                 Debug.Log("AssetDatabase refreshed after removing FormerlySerializedAs attributes.");
+                AssetDatabase.Refresh(); // Refresh only if changes were made
+                Debug.Log("AssetDatabase refreshed after removing FormerlySerializedAs attributes.");
             }
 
 
@@ -146,15 +139,19 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             message += $"Found {scriptsWithAttributePaths.Count} script file(s) with attributes, corresponding to {baseTypesWithAttribute.Count} base class type(s).\n"; // ★ メッセージ修正
             if (totalRemovedCount > 0)
             {
-                 message += $"Successfully removed {totalRemovedCount} FormerlySerializedAs attributes.\n";
-            } else {
-                 message += "No FormerlySerializedAs attributes were removed.\n"; // メッセージ調整
+                message += $"Successfully removed {totalRemovedCount} FormerlySerializedAs attributes.\n";
+            }
+            else
+            {
+                message += "No FormerlySerializedAs attributes were removed.\n"; // メッセージ調整
             }
 
             if (reserializedPrefabCount > 0)
             {
                 message += $"Requested reserialization for {reserializedPrefabCount} related Prefab asset(s).\n";
-            } else if (scriptsWithAttributePaths.Count > 0) {
+            }
+            else if (scriptsWithAttributePaths.Count > 0)
+            {
                 message += "No related Prefab assets needed reserialization.\n";
             }
 
@@ -162,7 +159,10 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             if (updatedSceneCount > 0)
             {
                 message += $"Marked {updatedSceneCount} open scene(s) as dirty.\nPlease save the modified scene(s).";
-            } else if (scriptsWithAttributePaths.Count > 0) { // 属性持ちスクリプトがあった場合のみメッセージ表示
+            }
+            else if (scriptsWithAttributePaths.Count > 0)
+            {
+                // 属性持ちスクリプトがあった場合のみメッセージ表示
                 message += "No open scenes needed updating.";
             }
 
@@ -179,17 +179,18 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             if (File.Exists(path) && Path.GetExtension(path).ToLower() == ".cs")
             {
                 // Ensure the single selected file is also within Assets
-                 if (path.StartsWith("Assets/"))
-                 {
+                if (path.StartsWith("Assets/"))
+                {
                     scriptPaths.Add(path);
-                 }
+                }
             }
             else if (Directory.Exists(path))
             {
-                 // GetFiles already searches recursively. Filter results for Assets/.
-                 scriptPaths.AddRange(Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories)
-                                             .Where(p => p.StartsWith("Assets/")));
+                // GetFiles already searches recursively. Filter results for Assets/.
+                scriptPaths.AddRange(Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories)
+                    .Where(p => p.StartsWith("Assets/")));
             }
+
             return scriptPaths;
         }
 
@@ -217,11 +218,12 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                     Debug.LogError($"Error reading script file {scriptPath}: {ex.Message}");
                     // Optionally continue to the next file or rethrow/handle differently
                 }
-                 catch (System.Exception ex) // Catch other potential exceptions during check
-                 {
+                catch (System.Exception ex) // Catch other potential exceptions during check
+                {
                     Debug.LogError($"Unexpected error checking script {scriptPath}: {ex.Message}");
-                 }
+                }
             }
+
             return foundScripts;
         }
 
@@ -232,30 +234,30 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
         /// </summary>
         private static int UpdateRelatedPrefabs(HashSet<Type> baseTypesWithAttribute)
         {
-             Debug.Log("[hatayama] UpdateRelatedPrefabs (Type check)"); // ログ変更
-             // 引数チェック
-             if (baseTypesWithAttribute == null || baseTypesWithAttribute.Count == 0)
-             {
-                 return 0;
-             }
+            Debug.Log("[hatayama] UpdateRelatedPrefabs (Type check)"); // ログ変更
+            // 引数チェック
+            if (baseTypesWithAttribute == null || baseTypesWithAttribute.Count == 0)
+            {
+                return 0;
+            }
 
-             // ★ HashSet<string> scriptPathSet は不要になる ★
-             // Use HashSet for efficient lookups
-             // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/"))); // Normalize paths
-             // foreach (string scriptPath in scriptsWithAttributePaths)
-             // {
-             //     Debug.Log($"[hatayama] {scriptPath}");
-             // }
+            // ★ HashSet<string> scriptPathSet は不要になる ★
+            // Use HashSet for efficient lookups
+            // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/"))); // Normalize paths
+            // foreach (string scriptPath in scriptsWithAttributePaths)
+            // {
+            //     Debug.Log($"[hatayama] {scriptPath}");
+            // }
 
-             string[] allPrefabGuids = AssetDatabase.FindAssets("t:Prefab");
-             int totalPrefabs = allPrefabGuids.Length; // ★ 全プレハブ数を取得
-             int processedCount = 0; // ★ 処理済み数をカウント
-             List<string> prefabsToReserializePaths = new List<string>();
+            string[] allPrefabGuids = AssetDatabase.FindAssets("t:Prefab");
+            int totalPrefabs = allPrefabGuids.Length; // ★ 全プレハブ数を取得
+            int processedCount = 0; // ★ 処理済み数をカウント
+            List<string> prefabsToReserializePaths = new List<string>();
 
-             // ★ デバッグログのメッセージも調整 ★
-             Debug.Log($"Checking {totalPrefabs} prefabs for components deriving from {baseTypesWithAttribute.Count} base types...");
+            // ★ デバッグログのメッセージも調整 ★
+            Debug.Log($"Checking {totalPrefabs} prefabs for components deriving from {baseTypesWithAttribute.Count} base types...");
 
-Debug.Log("[hatayama] ProcessSelectedScript 2");
+            Debug.Log("[hatayama] ProcessSelectedScript 2");
             try // ★ プログレスバーを確実に閉じるために try-finally を使うんや
             {
                 // ★ プログレスバー表示開始
@@ -271,12 +273,11 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                     // DisplayCancelableProgressBar はループ内で呼ぶ
                     if (EditorUtility.DisplayCancelableProgressBar("Updating Prefabs", info, progress))
                     {
-                         // ★ キャンセルボタンが押された場合の処理
-                         Debug.LogWarning("Prefab update process cancelled by user.");
-                         // finally ブロックで ClearProgressBar が呼ばれるので、ここでは return 0 するだけでよい
-                         return 0; // ★ キャンセルされたら 0 を返す
+                        // ★ キャンセルボタンが押された場合の処理
+                        Debug.LogWarning("Prefab update process cancelled by user.");
+                        // finally ブロックで ClearProgressBar が呼ばれるので、ここでは return 0 するだけでよい
+                        return 0; // ★ キャンセルされたら 0 を返す
                     }
-
 
                     string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuid)?.Replace("\\\\", "/"); // Normalize path
                     // Ensure the prefab is within the Assets folder
@@ -286,8 +287,9 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                     }
 
                     GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    if (prefab == null) {
-                         Debug.LogWarning($"Could not load prefab at path: {prefabPath}");
+                    if (prefab == null)
+                    {
+                        Debug.LogWarning($"Could not load prefab at path: {prefabPath}");
                         continue;
                     }
 
@@ -304,36 +306,6 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                         MonoBehaviour behaviour = component as MonoBehaviour;
                         if (behaviour == null) continue;
 
-                        // ★★★ このコンポーネントが Nested Prefab インスタンスの一部ならスキップ ★★★
-                        // PrefabUtility.IsPartOfPrefabInstance は、そのオブジェクトがプレハブアセット内で
-                        // 別のプレハブから生成されたインスタンスの一部である場合に true を返すはずや。
-                        // if (PrefabUtility.IsPartOfPrefabInstance(behaviour.gameObject))
-                        // {
-                        //     Debug.Log($"Skipping component on nested prefab instance: {behaviour.gameObject.name} in {prefabPath}"); // 必要ならログ出す
-                        //     continue; // Nested Prefab 上のコンポーネントは属性チェックをスキップ
-                        // }
-                        // ★★★ チェック終了 ★★★
-                        //
-                        // // ① そのオブジェクトが属する最も近い Prefab インスタンスのルートを取る
-                        // var root = PrefabUtility.GetNearestPrefabInstanceRoot(behaviour);
-                        // if (!PrefabUtility.HasPrefabInstanceAnyOverrides(root, false))
-                        // {
-                        //     continue;
-                        // }
-                        // var objOverrides = PrefabUtility.GetObjectOverrides(root, false);
-                        // foreach (var ov in objOverrides)
-                        // {
-                        //     Debug.Log($"★ {ov.instanceObject.name} にプロパティ差分あり");
-                        // }
-
-                        //
-                        //     // ② 「デフォルトのオーバーライド（座標0,0,0 等）」は無視してチェック
-                        // bool hasDiff = PrefabUtility.HasPrefabInstanceAnyOverrides(root, includeDefaultOverrides: false);
-                        // if (!hasDiff)
-                        // {
-                        //     continue;
-                        // }
-
                         // ★★★ 型チェックロジックに変更 ★★★
                         Type componentType = behaviour.GetType(); // コンポーネントの型を取得
                         bool typeMatchFound = false; // マッチしたかのフラグ
@@ -344,10 +316,8 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                             // コンポーネントの型が基本クラスと同じか、そのサブクラスか？
                             if (componentType == baseType || componentType.IsSubclassOf(baseType))
                             {
-                                // 型がマッチした！
                                 typeMatchFound = true;
-                                Debug.Log($"[Type Check] Match found: Component type '{componentType.FullName}' matches or inherits from base type '{baseType.FullName}' in prefab '{prefabPath}'.");
-                                break; // このコンポーネントについては、これ以上基本クラスをチェック不要
+                                break;
                             }
                         }
 
@@ -360,46 +330,31 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                             // Debug.Log($"Marking prefab asset for reserialization: {prefabPath}");
                             break; // このプレハブは対象確定なので、他のコンポーネントは見なくてええ
                         }
-
-                        // --- MonoScript取得やパス比較のコードは不要になったので削除 ---
-                        // MonoScript monoScript = MonoScript.FromMonoBehaviour(behaviour);
-                        // if (monoScript == null) continue;
-                        // string scriptAssetPath = AssetDatabase.GetAssetPath(monoScript)?.Replace("\\", "/");
-                        // Debug.Log($"[hatayama] scriptAssetPath 4 {scriptAssetPath}");
-                        // if (!string.IsNullOrEmpty(scriptAssetPath) && baseTypesWithAttribute.Contains(monoScript.GetClass())) // <- この比較が型比較に置き換わった
-
-                    } // コンポーネントごとのループ終了
+                    }
 
                     // ★★★ 再シリアライズ対象なら、パスをリストに追加 ★★★
                     if (shouldReserialize)
                     {
                         prefabsToReserializePaths.Add(prefabPath);
-                        // updatedPrefabCount は後でリストのサイズから取得するので、ここでは不要
                     }
-                } // ★ ループ終了
+                }
             }
             finally
             {
-                 // ★ プログレスバーを閉じる
-                 EditorUtility.ClearProgressBar();
+                EditorUtility.ClearProgressBar();
             }
 
 
-            // ★★★ リストに溜まったパスを使って ForceReserializeAssets を呼び出す ★★★
-             if (prefabsToReserializePaths.Count > 0)
-             {
-                 Debug.Log($"Requesting reserialization for {prefabsToReserializePaths.Count} prefab asset(s)...");
-                 // ForceReserializeAssets は IEnumerable<string> を受け取る
-                 AssetDatabase.ForceReserializeAssets(prefabsToReserializePaths);
-                 Debug.Log($"Finished requesting reserialization.");
-
-                 // ★★★ ここからファイル書き出し処理を追加 ★★★
-                 WriteReserializedPathsToFile(prefabsToReserializePaths);
-                 // ★★★ ファイル書き出し処理ここまで ★★★
-
-             } else {
-                 Debug.Log("No prefab assets needed reserialization.");
-             }
+            if (prefabsToReserializePaths.Count > 0)
+            {
+                AssetDatabase.StartAssetEditing();
+                AssetDatabase.ForceReserializeAssets(prefabsToReserializePaths);
+                AssetDatabase.StopAssetEditing();
+            }
+            else
+            {
+                Debug.Log("No prefab assets needed reserialization.");
+            }
 
             // ★★★ 再シリアライズしたプレハブ数を返す (リストのサイズ) ★★★
             return prefabsToReserializePaths.Count;
@@ -412,20 +367,20 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
         /// </summary>
         private static int UpdateSceneObjects(HashSet<Type> baseTypesWithAttribute)
         {
-             // 引数チェック
-             if (baseTypesWithAttribute == null || baseTypesWithAttribute.Count == 0)
-             {
-                 return 0;
-             }
+            // 引数チェック
+            if (baseTypesWithAttribute == null || baseTypesWithAttribute.Count == 0)
+            {
+                return 0;
+            }
 
-             // ★ HashSet<string> scriptPathSet は不要になる ★
-             // 属性持ちスクリプトのパスを HashSet にしておくで
-             // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/")));
-             int dirtySceneCount = 0;
-             int totalScenes = EditorSceneManager.sceneCount; // ★ 総シーン数を取得
+            // ★ HashSet<string> scriptPathSet は不要になる ★
+            // 属性持ちスクリプトのパスを HashSet にしておくで
+            // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/")));
+            int dirtySceneCount = 0;
+            int totalScenes = EditorSceneManager.sceneCount; // ★ 総シーン数を取得
 
-             // ★ デバッグログのメッセージも調整 ★
-             Debug.Log($"Checking GameObjects in {totalScenes} open scenes for components deriving from {baseTypesWithAttribute.Count} base types...");
+            // ★ デバッグログのメッセージも調整 ★
+            Debug.Log($"Checking GameObjects in {totalScenes} open scenes for components deriving from {baseTypesWithAttribute.Count} base types...");
 
             // ★ プログレスバー表示のために try-finally を使うで
             try
@@ -485,7 +440,8 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                                 {
                                     // 型がマッチした！
                                     typeMatchFound = true;
-                                    Debug.Log($"[Type Check] Match found: Component type '{componentType.FullName}' matches or inherits from base type '{baseType.FullName}' on GameObject '{behaviour.gameObject.name}' in scene '{scene.name}'.");
+                                    Debug.Log(
+                                        $"[Type Check] Match found: Component type '{componentType.FullName}' matches or inherits from base type '{baseType.FullName}' on GameObject '{behaviour.gameObject.name}' in scene '{scene.name}'.");
                                     break; // このコンポーネントについては、これ以上基本クラスをチェック不要
                                 }
                             }
@@ -499,16 +455,6 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                                 // Debug.Log($"Marking scene dirty due to component on {behaviour.gameObject.name}.");
                                 break; // この GameObject の他のコンポーネントや子孫は見なくてええ
                             }
-
-                            // --- MonoScript取得やパス比較のコードは不要になったので削除 ---
-                            // MonoBehaviour から MonoScript を取得
-                            // MonoScript monoScript = MonoScript.FromMonoBehaviour(behaviour);
-                            // if (monoScript == null) continue;
-                            // スクリプトパスを取得して正規化
-                            // string scriptAssetPath = AssetDatabase.GetAssetPath(monoScript)?.Replace("\\", "/");
-                            // 属性持ちスクリプトリストに含まれてるかチェック
-                            // if (!string.IsNullOrEmpty(scriptAssetPath) && baseTypesWithAttribute.Contains(monoScript.GetClass())) // <- この比較が型比較に置き換わった
-
                         } // MonoBehaviour ごとのループ終了
 
                         // このルートオブジェクト以下でダーティフラグが立ったら、シーン全体の探索も終了
@@ -525,8 +471,8 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                         EditorSceneManager.MarkSceneDirty(scene);
                         dirtySceneCount++;
                     }
-                } // ★ シーンループ終了
-            } // ★ tryブロック終了
+                }
+            }
             finally
             {
                 // ★ プログレスバーを確実に閉じる ★
@@ -564,65 +510,23 @@ Debug.Log("[hatayama] ProcessSelectedScript 2");
                     File.WriteAllText(scriptPath, processedContent);
                     Debug.Log($"Removed {removedCount} attributes from {Path.GetFileName(scriptPath)}");
                     return removedCount;
-                } else if (removedCount > 0) {
-                     Debug.LogWarning($"Remover reported {removedCount} removals in {Path.GetFileName(scriptPath)}, but content was unchanged. Check remover logic.");
-                     return 0; // Report 0 if no change occurred despite count > 0
+                }
+                else if (removedCount > 0)
+                {
+                    Debug.LogWarning($"Remover reported {removedCount} removals in {Path.GetFileName(scriptPath)}, but content was unchanged. Check remover logic.");
+                    return 0; // Report 0 if no change occurred despite count > 0
                 }
             }
             catch (IOException ex)
             {
                 Debug.LogError($"Error reading/writing script file {scriptPath}: {ex.Message}");
             }
-             catch (System.Exception ex) // Catch other potential exceptions during removal
-             {
+            catch (System.Exception ex) // Catch other potential exceptions during removal
+            {
                 Debug.LogError($"Unexpected error removing attributes from script {scriptPath}: {ex.Message}");
-             }
+            }
+
             return 0; // Return 0 if no attributes were removed or an error occurred
         }
-
-        // ★★★ 新しいメソッド: 再シリアライズしたパスをファイルに書き出す ★★★
-        private static void WriteReserializedPathsToFile(List<string> paths)
-        {
-            const string LogDirectory = "Logs"; // 保存先フォルダ名
-            const string LogFileName = "ReserializedPrefabsLog.txt"; // ログファイル名
-            string logFilePath = Path.Combine(LogDirectory, LogFileName); // 完全なファイルパス
-
-            try
-            {
-                // Logs ディレクトリが存在しなければ作成する
-                if (!Directory.Exists(LogDirectory))
-                {
-                    Directory.CreateDirectory(LogDirectory);
-                    Debug.Log($"Created log directory: {LogDirectory}");
-                }
-
-                // 書き込む内容を作成 (タイムスタンプ + ヘッダー + パス一覧)
-                string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                List<string> linesToWrite = new List<string>
-                {
-                    $"--- Reserialized Prefabs Log ({timestamp}) ---",
-                    $"Total: {paths.Count} prefab(s)"
-                };
-                linesToWrite.AddRange(paths); // パスリストを追加
-
-                // ファイルに書き込み (既存ファイルは上書き)
-                File.WriteAllLines(logFilePath, linesToWrite);
-
-                Debug.Log($"Successfully wrote reserialized prefab paths to: {logFilePath}");
-            }
-            catch (IOException ex)
-            {
-                Debug.LogError($"Failed to write reserialized paths to log file {logFilePath}. IO Error: {ex.Message}");
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                Debug.LogError($"Failed to write reserialized paths to log file {logFilePath}. Access Denied: {ex.Message}");
-            }
-            catch (Exception ex) // その他の予期せぬエラー
-            {
-                 Debug.LogError($"An unexpected error occurred while writing log file {logFilePath}: {ex.Message}");
-            }
-        }
-        // ★★★ 新しいメソッドここまで ★★★
     }
-} 
+}
