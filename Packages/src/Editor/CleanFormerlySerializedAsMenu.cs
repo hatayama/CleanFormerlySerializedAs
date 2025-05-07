@@ -35,8 +35,6 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
         [MenuItem(MenuItemPath, false, 1000)]
         private static void ProcessSelectedScript()
         {
-            Debug.Log("[hatayama] ProcessSelectedScript");
-
             bool userConfirmed = EditorUtility.DisplayDialog(
                 "Confirmation",
                 "It's recommended to back up your project (e.g., using git) just in case.",
@@ -66,19 +64,19 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 return;
             }
 
-            // 1a. 属性を含むスクリプトの「パス」を探す
+            // 1a. Find paths of scripts containing the attribute
             FormerlySerializedAsRemover checker = new FormerlySerializedAsRemover();
-            List<string> scriptsWithAttributePaths = FindScriptsWithAttribute(targetScriptPaths, checker); // ★ 変数名明確化
+            List<string> scriptsWithAttributePaths = FindScriptsWithAttribute(targetScriptPaths, checker); // * Clarify variable name
 
             if (scriptsWithAttributePaths.Count == 0)
             {
                 EditorUtility.DisplayDialog("Clean FormerlySerializedAs",
-                    $"Processed {targetScriptPaths.Count} script(s).\nNo scripts containing FormerlySerializedAs attributes found.", // メッセージ変更
+                    $"Processed {targetScriptPaths.Count} script(s).\nNo scripts containing FormerlySerializedAs attributes found.", // Changed message
                     "OK");
                 return;
             }
 
-            // ★★★ 1b. 属性を持つスクリプトパスから Type オブジェクトのセットを作成 ★★★
+            // *** 1b. Create a set of Type objects from script paths with attributes ***
             HashSet<Type> baseTypesWithAttribute = new HashSet<Type>();
             foreach (string scriptPath in scriptsWithAttributePaths)
             {
@@ -86,10 +84,9 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 if (monoScript != null)
                 {
                     Type scriptType = monoScript.GetClass();
-                    if (scriptType != null && typeof(MonoBehaviour).IsAssignableFrom(scriptType)) // MonoBehaviour 派生かどうかも一応チェック
+                    if (scriptType != null && typeof(MonoBehaviour).IsAssignableFrom(scriptType)) // Also check if it's a MonoBehaviour derivative
                     {
                         baseTypesWithAttribute.Add(scriptType);
-                        Debug.Log($"[Type Check] Found base type with attribute: {scriptType.FullName}");
                     }
                     else if (scriptType == null)
                     {
@@ -109,16 +106,16 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                     "OK");
                 return;
             }
-            // ★★★ Type セット作成ここまで ★★★
+            // *** Type set creation ends here ***
 
 
-            // ★★★ 2a. 関連プレハブチェック (引数を Type セットに変更) ★★★
+            // *** 2a. Check related prefabs (argument changed to Type set) ***
             int reserializedPrefabCount = UpdateRelatedPrefabs(baseTypesWithAttribute);
 
-            // ★★★ 2b. シーンオブジェクトチェック (引数を Type セットに変更) ★★★
+            // *** 2b. Check scene objects (argument changed to Type set) ***
             int updatedSceneCount = UpdateSceneObjects(baseTypesWithAttribute);
 
-            // 3. 属性をスクリプトから削除 (対象は元のパスリスト)
+            // 3. Remove attributes from scripts (target is the original path list)
             int totalRemovedCount = 0;
             // Reuse the checker instance, assuming it can also perform removal
             foreach (string scriptPath in scriptsWithAttributePaths)
@@ -130,20 +127,19 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             if (totalRemovedCount > 0)
             {
                 AssetDatabase.Refresh(); // Refresh only if changes were made
-                Debug.Log("AssetDatabase refreshed after removing FormerlySerializedAs attributes.");
             }
 
 
-            // ★★★ 再シリアライズ結果のメッセージに変更 ★★★
+            // *** Changed to reserialization result message ***
             string message = $"Processed {targetScriptPaths.Count} script(s).\n";
-            message += $"Found {scriptsWithAttributePaths.Count} script file(s) with attributes, corresponding to {baseTypesWithAttribute.Count} base class type(s).\n"; // ★ メッセージ修正
+            message += $"Found {scriptsWithAttributePaths.Count} script file(s) with attributes, corresponding to {baseTypesWithAttribute.Count} base class type(s).\n"; // * Message corrected
             if (totalRemovedCount > 0)
             {
                 message += $"Successfully removed {totalRemovedCount} FormerlySerializedAs attributes.\n";
             }
             else
             {
-                message += "No FormerlySerializedAs attributes were removed.\n"; // メッセージ調整
+                message += "No FormerlySerializedAs attributes were removed.\n"; // Message adjusted
             }
 
             if (reserializedPrefabCount > 0)
@@ -155,14 +151,14 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 message += "No related Prefab assets needed reserialization.\n";
             }
 
-            // ★ シーン更新結果のメッセージを追加 ★
+            // * Add message for scene update result *
             if (updatedSceneCount > 0)
             {
                 message += $"Marked {updatedSceneCount} open scene(s) as dirty.\nPlease save the modified scene(s).";
             }
             else if (scriptsWithAttributePaths.Count > 0)
             {
-                // 属性持ちスクリプトがあった場合のみメッセージ表示
+                // Display message only if there were scripts with attributes
                 message += "No open scenes needed updating.";
             }
 
@@ -234,49 +230,36 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
         /// </summary>
         private static int UpdateRelatedPrefabs(HashSet<Type> baseTypesWithAttribute)
         {
-            Debug.Log("[hatayama] UpdateRelatedPrefabs (Type check)"); // ログ変更
-            // 引数チェック
+            // Argument check
             if (baseTypesWithAttribute == null || baseTypesWithAttribute.Count == 0)
             {
                 return 0;
             }
 
-            // ★ HashSet<string> scriptPathSet は不要になる ★
-            // Use HashSet for efficient lookups
-            // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/"))); // Normalize paths
-            // foreach (string scriptPath in scriptsWithAttributePaths)
-            // {
-            //     Debug.Log($"[hatayama] {scriptPath}");
-            // }
-
             string[] allPrefabGuids = AssetDatabase.FindAssets("t:Prefab");
-            int totalPrefabs = allPrefabGuids.Length; // ★ 全プレハブ数を取得
-            int processedCount = 0; // ★ 処理済み数をカウント
+            int totalPrefabs = allPrefabGuids.Length; // * Get total number of prefabs
+            int processedCount = 0; // * Count processed items
             List<string> prefabsToReserializePaths = new List<string>();
-
-            // ★ デバッグログのメッセージも調整 ★
-            Debug.Log($"Checking {totalPrefabs} prefabs for components deriving from {baseTypesWithAttribute.Count} base types...");
-
-            Debug.Log("[hatayama] ProcessSelectedScript 2");
-            try // ★ プログレスバーを確実に閉じるために try-finally を使うんや
+            
+            try // * Use try-finally to ensure the progress bar is closed
             {
-                // ★ プログレスバー表示開始
-                // 最初はキャンセル不可のバーを表示（0%時点ですぐキャンセルされるのを防ぐ意図もある）
+                // * Start displaying progress bar
+                // Initially display a non-cancelable bar (also intended to prevent immediate cancellation at 0%)
                 EditorUtility.DisplayProgressBar("Updating Prefabs", "Starting scan...", 0f);
 
                 foreach (string prefabGuid in allPrefabGuids)
                 {
-                    processedCount++; // ★ 処理済み数をインクリメント
-                    // ★ プログレスバー更新 (タイトル、情報、進捗率) - ここからキャンセル可能にする
+                    processedCount++; // * Increment processed count
+                    // * Update progress bar (title, info, progress rate) - make it cancelable from here
                     string info = $"Scanning prefab {processedCount}/{totalPrefabs}";
                     float progress = (float)processedCount / totalPrefabs;
-                    // DisplayCancelableProgressBar はループ内で呼ぶ
+                    // Call DisplayCancelableProgressBar inside the loop
                     if (EditorUtility.DisplayCancelableProgressBar("Updating Prefabs", info, progress))
                     {
-                        // ★ キャンセルボタンが押された場合の処理
+                        // * Process when cancel button is pressed
                         Debug.LogWarning("Prefab update process cancelled by user.");
-                        // finally ブロックで ClearProgressBar が呼ばれるので、ここでは return 0 するだけでよい
-                        return 0; // ★ キャンセルされたら 0 を返す
+                        // ClearProgressBar will be called in the finally block, so just return 0 here
+                        return 0; // * Return 0 if cancelled
                     }
 
                     string prefabPath = AssetDatabase.GUIDToAssetPath(prefabGuid)?.Replace("\\\\", "/"); // Normalize path
@@ -293,46 +276,25 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                         continue;
                     }
 
-                    Debug.Log($"[hatayama] prefabPath 3 {prefabPath}");
-
-                    // ★ プレハブ内のコンポーネントをチェック ★
+                    // * Check components in the prefab *
                     Component[] components = prefab.GetComponentsInChildren<Component>(true);
-                    bool shouldReserialize = false; // このプレハブを再シリアライズするかのフラグ
+                    bool shouldReserialize = false; // Flag indicating whether to reserialize this prefab
 
                     foreach (Component component in components)
                     {
                         if (component == null) continue;
 
                         MonoBehaviour behaviour = component as MonoBehaviour;
-                        if (behaviour == null) continue;
-
-                        // ★★★ 型チェックロジックに変更 ★★★
-                        Type componentType = behaviour.GetType(); // コンポーネントの型を取得
-                        bool typeMatchFound = false; // マッチしたかのフラグ
-
-                        // 属性を持つ基本クラスの型セットをループ
-                        foreach (Type baseType in baseTypesWithAttribute)
+                        // No need to check if behaviour is null here, IsComponentTypeMatch will handle it.
+                        if (IsComponentTypeMatch(behaviour, baseTypesWithAttribute))
                         {
-                            // コンポーネントの型が基本クラスと同じか、そのサブクラスか？
-                            if (componentType == baseType || componentType.IsSubclassOf(baseType))
-                            {
-                                typeMatchFound = true;
-                                break;
-                            }
-                        }
-
-                        // ★★★ 型がマッチした場合のみ、再シリアライズ対象とする ★★★
-                        if (typeMatchFound)
-                        {
-                            // 属性持ちスクリプト(またはその子クラス)が見つかったら、このプレハブは再シリアライズ対象や
+                            // If a script with attributes (or its child class) is found, this prefab is a reserialization target
                             shouldReserialize = true;
-                            // 以前のデバッグログは型チェックのログに含めたので、ここはシンプルに
-                            // Debug.Log($"Marking prefab asset for reserialization: {prefabPath}");
-                            break; // このプレハブは対象確定なので、他のコンポーネントは見なくてええ
+                            break; // This prefab is confirmed, no need to check other components
                         }
                     }
 
-                    // ★★★ 再シリアライズ対象なら、パスをリストに追加 ★★★
+                    // *** If it\'s a reserialization target, add the path to the list ***
                     if (shouldReserialize)
                     {
                         prefabsToReserializePaths.Add(prefabPath);
@@ -353,10 +315,10 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             }
             else
             {
-                Debug.Log("No prefab assets needed reserialization.");
+                // Debug.Log("No prefab assets needed reserialization."); // Removed as final dialog is sufficient
             }
 
-            // ★★★ 再シリアライズしたプレハブ数を返す (リストのサイズ) ★★★
+            // *** Return the number of reserialized prefabs (size of the list) ***
             return prefabsToReserializePaths.Count;
         }
 
@@ -367,107 +329,86 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
         /// </summary>
         private static int UpdateSceneObjects(HashSet<Type> baseTypesWithAttribute)
         {
-            // 引数チェック
+            // Argument check
             if (baseTypesWithAttribute == null || baseTypesWithAttribute.Count == 0)
             {
                 return 0;
             }
 
-            // ★ HashSet<string> scriptPathSet は不要になる ★
-            // 属性持ちスクリプトのパスを HashSet にしておくで
-            // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\", "/")));
+            // * HashSet<string> scriptPathSet is no longer needed *
+            // Keep paths of scripts with attributes in a HashSet
+            // HashSet<string> scriptPathSet = new HashSet<string>(scriptsWithAttributePaths.Select(p => p.Replace("\\\\", "/")));
             int dirtySceneCount = 0;
-            int totalScenes = EditorSceneManager.sceneCount; // ★ 総シーン数を取得
+            int totalScenes = EditorSceneManager.sceneCount; // * Get total number of scenes
 
-            // ★ デバッグログのメッセージも調整 ★
-            Debug.Log($"Checking GameObjects in {totalScenes} open scenes for components deriving from {baseTypesWithAttribute.Count} base types...");
+            // * Adjust debug log message as well *
+            // Debug.Log($"Checking GameObjects in {totalScenes} open scenes for components deriving from {baseTypesWithAttribute.Count} base types..."); // Removed for cleaner console
 
-            // ★ プログレスバー表示のために try-finally を使うで
+            // * Use try-finally to display progress bar *
             try
             {
-                // ★ プログレスバー初期表示 (キャンセル不可)
+                // * Initial progress bar display (non-cancelable)
                 EditorUtility.DisplayProgressBar("Updating Scene Objects", "Starting scene scan...", 0f);
 
-                // 開いている全シーンをループ
-                for (int i = 0; i < totalScenes; i++) // ★ ループ条件を totalScenes に変更
+                // Loop through all open scenes
+                for (int i = 0; i < totalScenes; i++) // * Change loop condition to totalScenes *
                 {
                     Scene scene = EditorSceneManager.GetSceneAt(i);
 
-                    // ★ プログレスバー更新 (ここからキャンセル可能) ★
+                    // * Update progress bar (cancelable from here) *
                     string sceneName = string.IsNullOrEmpty(scene.name) ? $"Untitled Scene {i}" : scene.name;
                     string info = $"Scanning scene {i + 1}/{totalScenes}: {sceneName}";
                     float progress = (float)(i + 1) / totalScenes;
                     if (EditorUtility.DisplayCancelableProgressBar("Updating Scene Objects", info, progress))
                     {
-                        // ★ キャンセル処理 ★
+                        // * Cancel process *
                         Debug.LogWarning("Scene object update process cancelled by user.");
-                        return 0; // キャンセルされたら 0 を返す
+                        return 0; // Return 0 if cancelled
                     }
 
-                    // シーンがロードされてて有効か確認 (isDirtyチェックは不要)
+                    // Check if scene is loaded and valid (isDirty check is unnecessary)
                     if (!scene.IsValid() || !scene.isLoaded /*|| scene.isDirty*/)
                     {
                         continue;
                     }
 
-                    bool sceneNeedsMarkingDirty = false; // このシーンをダーティにするかのフラグ
+                    bool sceneNeedsMarkingDirty = false; // Flag indicating whether to mark this scene as dirty
 
-                    // シーンのルートGameObjectを取得
+                    // Get root GameObjects of the scene
                     GameObject[] rootObjects = scene.GetRootGameObjects();
                     foreach (GameObject rootObject in rootObjects)
                     {
-                        // ルートとその子孫の MonoBehaviour を全取得
+                        // Get all MonoBehaviours in the root and its descendants
                         MonoBehaviour[] behaviours = rootObject.GetComponentsInChildren<MonoBehaviour>(true);
                         foreach (MonoBehaviour behaviour in behaviours)
                         {
-                            if (behaviour == null) continue;
+                            // No need to check if behaviour is null here, IsComponentTypeMatch will handle it.
 
-                            // ★★★ このGameObjectがプレハブの一部「ではない」ことを確認 ★★★
+                            // *** Confirm that this GameObject is NOT part of a prefab ***
                             if (PrefabUtility.IsPartOfAnyPrefab(behaviour.gameObject))
                             {
-                                continue; // プレハブの一部ならスキップや
+                                continue; // Skip if it\'s part of a prefab
                             }
 
-                            // ★★★ 型チェックロジックに変更 ★★★
-                            Type componentType = behaviour.GetType(); // コンポーネントの型を取得
-                            bool typeMatchFound = false; // マッチしたかのフラグ
-
-                            // 属性を持つ基本クラスの型セットをループ
-                            foreach (Type baseType in baseTypesWithAttribute)
+                            if (IsComponentTypeMatch(behaviour, baseTypesWithAttribute))
                             {
-                                // コンポーネントの型が基本クラスと同じか、そのサブクラスか？
-                                if (componentType == baseType || componentType.IsSubclassOf(baseType))
-                                {
-                                    // 型がマッチした！
-                                    typeMatchFound = true;
-                                    Debug.Log(
-                                        $"[Type Check] Match found: Component type '{componentType.FullName}' matches or inherits from base type '{baseType.FullName}' on GameObject '{behaviour.gameObject.name}' in scene '{scene.name}'.");
-                                    break; // このコンポーネントについては、これ以上基本クラスをチェック不要
-                                }
-                            }
-
-                            // ★★★ 型がマッチした場合のみ、シーンをダーティにする ★★★
-                            if (typeMatchFound)
-                            {
-                                // 見つかった！このシーンはダーティにする必要がある
+                                // Found! This scene needs to be marked dirty
                                 sceneNeedsMarkingDirty = true;
-                                // 以前のデバッグログは型チェックのログに含めたので、ここはシンプルに
-                                // Debug.Log($"Marking scene dirty due to component on {behaviour.gameObject.name}.");
-                                break; // この GameObject の他のコンポーネントや子孫は見なくてええ
+                                break; // No need to check other components or descendants of this GameObject
                             }
-                        } // MonoBehaviour ごとのループ終了
+                        } // End of loop for each MonoBehaviour
 
-                        // このルートオブジェクト以下でダーティフラグが立ったら、シーン全体の探索も終了
+                        // If the dirty flag is set for this root object, end the search for the entire scene
                         if (sceneNeedsMarkingDirty)
                         {
                             break;
                         }
                     }
 
-                    // このシーンをダーティにする必要があればマークする
+                    // If this scene needs to be marked dirty, do it
                     if (sceneNeedsMarkingDirty)
                     {
-                        // MarkSceneDirty はシーンがすでにダーティでも問題ないはずや
+                        // MarkSceneDirty should be fine even if the scene is already dirty
                         EditorSceneManager.MarkSceneDirty(scene);
                         dirtySceneCount++;
                     }
@@ -475,21 +416,39 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             }
             finally
             {
-                // ★ プログレスバーを確実に閉じる ★
+                // * Ensure progress bar is closed *
                 EditorUtility.ClearProgressBar();
             }
 
 
             if (dirtySceneCount > 0)
             {
-                Debug.Log($"Marked {dirtySceneCount} scene(s) dirty.");
+                // Debug.Log($"Marked {dirtySceneCount} scene(s) dirty."); // Removed as final dialog is sufficient
             }
             else
             {
-                Debug.Log("No GameObjects in open scenes found using the modified scripts (excluding prefab instances).");
+                // Debug.Log("No GameObjects in open scenes found using the modified scripts (excluding prefab instances)."); // Removed as final dialog is sufficient
             }
 
             return dirtySceneCount;
+        }
+
+        /// <summary>
+        /// Checks if the component\'s type or its base types match any of the types in the provided set.
+        /// </summary>
+        private static bool IsComponentTypeMatch(MonoBehaviour behaviour, HashSet<Type> baseTypesWithAttribute)
+        {
+            if (behaviour == null) return false;
+
+            Type componentType = behaviour.GetType();
+            foreach (Type baseType in baseTypesWithAttribute)
+            {
+                if (componentType == baseType || componentType.IsSubclassOf(baseType))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>
@@ -508,7 +467,7 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
                 if (removedCount > 0 && originalContent != processedContent)
                 {
                     File.WriteAllText(scriptPath, processedContent);
-                    Debug.Log($"Removed {removedCount} attributes from {Path.GetFileName(scriptPath)}");
+                    // Debug.Log($"Removed {removedCount} attributes from {Path.GetFileName(scriptPath)}"); // Removed as final dialog is sufficient
                     return removedCount;
                 }
                 else if (removedCount > 0)
