@@ -1,6 +1,6 @@
 {
   "name": "io.github.hatayama.cleanformerlyserializedas",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "displayName": "CleanFormerlySerializedAs",
   "description": "Safely removes [FormerlySerializedAs] attributes from serialized fields.",
   "unity": "2020.3",
@@ -9,8 +9,7 @@
     "email": "booqle@gmail.com",
     "url": "https://github.com/hatayama/CleanFormerlySerializedAs"
   },
-  "dependencies": {
-  },
+  "dependencies": {},
   "keywords": [
     "FormerlySerializedAs",
     "serializefield"
