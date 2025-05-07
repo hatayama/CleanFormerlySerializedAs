@@ -80,4 +80,4 @@ namespace io.github.hatayama.CleanFormerlySerializedAs
             return (processedResult, totalRemovedCount);
         }
     }
-} 
+}
