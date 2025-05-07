@@ -30,45 +30,26 @@ jobs:
         run: |
           test -f Packages/src/package.json && echo "✅ package.json OK"
 
-      # package.jsonをルートにコピーするステップ（絶対パス使用）
-      - name: 📋 Copy package.json to root
-        run: |
-          cp $GITHUB_WORKSPACE/Packages/src/package.json $GITHUB_WORKSPACE/
-          cat package.json  # 内容確認
-          echo "✅ package.json copied to root"
-
       # ファイルの存在確認とデバッグ情報
-      - name: 🔍 Verify package.json exists in root
-        run: |
-          echo "Current directory: $(pwd)"
-          ls -la
-          if [ -f "package.json" ]; then
-            echo "✅ package.json exists in root directory"
-            echo "Content of package.json:"
-            cat package.json | head -10
-          else
-            echo "❌ package.json NOT found in root directory"
-            find . -name "package.json" -type f
-            exit 1
-          fi
-
-      # releaseコンフィグファイルの作成（念のため）
-      - name: 📝 Create release-please config
-        run: |
-          echo '{
-            "packages": {
-              ".": {
-                "release-type": "node"
-              }
-            }
-          }' > release-please-config.json
-          echo "✅ Created release-please-config.json"
-          cat release-please-config.json
+      # - name: 🔍 Verify package.json exists in root
+      #   run: |
+      #     echo "Current directory: $(pwd)"
+      #     ls -la
+      #     if [ -f "package.json" ]; then
+      #       echo "✅ package.json exists in root directory"
+      #       echo "Content of package.json:"
+      #       cat package.json | head -10
+      #     else
+      #       echo "❌ package.json NOT found in root directory"
+      #       find . -name "package.json" -type f
+      #       exit 1
+      #     fi
 
       # ── release‑please 本番 ───────────────────────────
       - name: 🚀 Run release‑please
-        uses: googleapis/release-please-action@v3  # v3を試してみる
+        uses: googleapis/release-please-action@v3
         with:
+          path: Packages/src
           release-type: node
           package-name: "io.github.hatayama.cleanformerlyserializedas"
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
