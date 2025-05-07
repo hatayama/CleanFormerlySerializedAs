@@ -53,22 +53,23 @@ jobs:
           fi
 
       # releaseコンフィグファイルの作成（念のため）
-      - name: 📝 Create release-please config
-        run: |
-          echo '{
-            "packages": {
-              ".": {
-                "release-type": "node"
-              }
-            }
-          }' > release-please-config.json
-          echo "✅ Created release-please-config.json"
-          cat release-please-config.json
+      # - name: 📝 Create release-please config
+      #   run: |
+      #     echo '{
+      #       "packages": {
+      #         ".": {
+      #           "release-type": "node"
+      #         }
+      #       }
+      #     }' > release-please-config.json
+      #     echo "✅ Created release-please-config.json"
+      #     cat release-please-config.json
 
       # ── release‑please 本番 ───────────────────────────
       - name: 🚀 Run release‑please
-        uses: googleapis/release-please-action@v3  # v3を試してみる
+        uses: googleapis/release-please-action@v3
         with:
+          path: Packages/src
           release-type: node
           package-name: "io.github.hatayama.cleanformerlyserializedas"
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
