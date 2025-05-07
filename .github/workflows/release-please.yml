@@ -37,4 +37,4 @@ jobs:
           path: Packages/src
           release-type: node
           package-name: "io.github.hatayama.cleanformerlyserializedas"
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
